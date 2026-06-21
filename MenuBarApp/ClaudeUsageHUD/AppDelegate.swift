@@ -44,6 +44,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             button.action = #selector(togglePopover(_:))
             button.target = self
             button.toolTip = "Claude Usage HUD"
+
+            // The gauge glyph sits to the left of the percentage. Marking it a
+            // template lets macOS tint it automatically for light/dark menu bars.
+            if let icon = NSImage(named: "MenuBarIcon") {
+                icon.isTemplate = true
+                icon.size = NSSize(width: 18, height: 18)
+                button.image = icon
+                button.imagePosition = .imageLeft
+                button.imageHugsTitle = true
+            }
         }
     }
 
