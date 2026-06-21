@@ -1,4 +1,18 @@
+<div align="center">
+
+<img src="icon.png" alt="Claude Usage HUD icon" width="140">
+
 # Claude Usage HUD
+
+**Your Claude.ai usage, always visible in the macOS menu bar.**
+
+![Platform](https://img.shields.io/badge/platform-macOS%2013%2B-black)
+![Swift](https://img.shields.io/badge/Swift-5.0-orange)
+![UI](https://img.shields.io/badge/SwiftUI%20%2B%20AppKit-blue)
+![Dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)
+![License](https://img.shields.io/badge/license-MIT-lightgrey)
+
+</div>
 
 Show your **Claude.ai session usage percentage** in the macOS menu bar at all
 times — the same figure Claude shows in its own UI.
@@ -45,7 +59,8 @@ claude-usage-hud/
 │       ├── SetupView.swift              One-time "paste your session key" screen
 │       ├── PopoverView.swift            SwiftUI popover (all usage buckets)
 │       ├── Info.plist                   LSUIElement = true (no Dock icon)
-│       └── Assets.xcassets
+│       └── Assets.xcassets              AppIcon + MenuBarIcon (template) + accent
+├── icon.png                         ← source HUD gauge artwork
 └── README.md
 ```
 
@@ -163,6 +178,21 @@ but if you hit a challenge, refresh claude.ai in your browser and copy a current
 For local use you don't need a paid Apple Developer account — set the target's
 Team to your free personal team (or leave automatic) and Xcode will sign it to
 run on your Mac.
+
+---
+
+## Icon
+
+The HUD gauge artwork lives at [`icon.png`](icon.png). It's wired into the asset
+catalog two ways:
+
+- **`AppIcon`** — squared, full-bleed dark version used as the app/Dock icon
+  (generated at all required macOS sizes, 16–1024 px).
+- **`MenuBarIcon`** — an 18×18 pt **template** image (the gauge silhouette, with
+  an @2x variant) that tints itself to match light/dark menu bars.
+
+The menu bar itself shows the live percentage text; `MenuBarIcon` is available in
+the catalog as the matching glyph.
 
 ---
 
