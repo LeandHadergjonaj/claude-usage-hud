@@ -6,51 +6,96 @@ extension Notification.Name {
     static let showSetup = Notification.Name("com.claudeusagehud.showSetup")
 }
 
-/// Shown when the user clicks the menu bar item: a progress arc, the session
-/// percentage, and when it resets — or a prompt to set up / fix the connection.
+/// Shown when the user clicks the menu bar item: every usage bucket Claude
+/// exposes (current session + weekly limits) — or a prompt to set up / fix the
+/// connection.
 struct PopoverView: View {
     @EnvironmentObject var state: UsageState
+    @ObservedObject private var loginItem = LoginItem.shared
+
+    /// How a bucket's reset time is phrased.
+    private enum ResetStyle { case countdown, weekday }
 
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(alignment: .leading, spacing: 12) {
             Text("Claude Usage")
                 .font(.headline)
+                .frame(maxWidth: .infinity)
 
             content
 
             footer
         }
-        .padding(20)
-        .frame(width: 250)
+        .padding(16)
+        .frame(width: 280)
     }
 
     @ViewBuilder
     private var content: some View {
-        if let pct = state.percentage {
-            arc(pct: pct)
-            Text("\(pct)% of session used")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-            if let resetsAt = state.resetsAt {
-                Text(resetText(resetsAt))
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+        if let session = state.session {
+            VStack(alignment: .leading, spacing: 14) {
+                usageSection("Current Session", session, reset: .countdown)
+                if let weekly = state.weeklyAllModels {
+                    usageSection("Weekly — All Models", weekly, reset: .weekday)
+                }
+                if let sonnet = state.weeklySonnet {
+                    usageSection("Weekly — Sonnet Only", sonnet, reset: .weekday)
+                }
             }
+
             if case .error(let message) = state.status {
                 Text("Couldn't refresh: \(message)")
                     .font(.caption2)
                     .foregroundColor(.orange)
-                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             if let updated = state.lastUpdated {
                 Text("Updated \(updated, style: .relative) ago")
                     .font(.caption2)
                     .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         } else {
             message(for: state.status)
+                .frame(maxWidth: .infinity)
         }
     }
+
+    // MARK: - Usage section
+
+    private func usageSection(_ title: String, _ bucket: UsageState.Bucket, reset: ResetStyle) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title)
+                .font(.caption.bold())
+            HStack(spacing: 10) {
+                bar(pct: bucket.percentage)
+                Text("\(bucket.percentage)%")
+                    .font(.caption.monospacedDigit().weight(.semibold))
+                    .frame(width: 38, alignment: .trailing)
+            }
+            if let resetsAt = bucket.resetsAt {
+                Text(resetText(resetsAt, style: reset))
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+        }
+    }
+
+    private func bar(pct: Int) -> some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Color.gray.opacity(0.2))
+                Capsule()
+                    .fill(color(for: pct))
+                    .frame(width: max(0, geo.size.width * CGFloat(pct) / 100))
+                    .animation(.easeInOut(duration: 0.4), value: pct)
+            }
+        }
+        .frame(height: 9)
+    }
+
+    // MARK: - Placeholder (not connected / error states)
 
     @ViewBuilder
     private func message(for status: UsageState.Status) -> some View {
@@ -117,13 +162,23 @@ struct PopoverView: View {
         .padding(.horizontal, 4)
     }
 
+    // MARK: - Footer
+
     private var footer: some View {
-        // Quit is always reachable; "Update key" appears once connected (the
-        // setup / expired states already surface their own action button).
-        VStack(spacing: 0) {
+        VStack(spacing: 8) {
             Divider()
+            Toggle(isOn: Binding(
+                get: { loginItem.isEnabled },
+                set: { loginItem.setEnabled($0) }
+            )) {
+                Text("Launch at login").font(.caption)
+            }
+            .toggleStyle(.checkbox)
+            .controlSize(.small)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
             HStack {
-                if state.percentage != nil {
+                if state.session != nil {
                     Button("Update key") {
                         NotificationCenter.default.post(name: .showSetup, object: nil)
                     }
@@ -138,22 +193,7 @@ struct PopoverView: View {
         }
     }
 
-    private func arc(pct: Int) -> some View {
-        ZStack {
-            Circle()
-                .stroke(Color.gray.opacity(0.2), lineWidth: 10)
-            Circle()
-                .trim(from: 0, to: CGFloat(pct) / 100)
-                .stroke(color(for: pct), style: StrokeStyle(lineWidth: 10, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-                .animation(.easeInOut(duration: 0.4), value: pct)
-            Text("\(pct)%")
-                .font(.system(size: 28, weight: .bold, design: .rounded))
-                .monospacedDigit()
-        }
-        .frame(width: 96, height: 96)
-        .padding(.top, 4)
-    }
+    // MARK: - Formatting
 
     private func color(for pct: Int) -> Color {
         switch pct {
@@ -163,19 +203,33 @@ struct PopoverView: View {
         }
     }
 
-    /// "Resets in 2h 14m" / "Resets in 9m" / "Resetting now".
-    private func resetText(_ date: Date) -> String {
-        let remaining = Int(date.timeIntervalSinceNow)
-        guard remaining > 0 else { return "Resetting now" }
-        let hours = remaining / 3600
-        let minutes = (remaining % 3600) / 60
-        if hours > 0 { return "Resets in \(hours)h \(minutes)m" }
-        return "Resets in \(minutes)m"
+    private func resetText(_ date: Date, style: ResetStyle) -> String {
+        switch style {
+        case .countdown:
+            let remaining = Int(date.timeIntervalSinceNow)
+            guard remaining > 0 else { return "Resets now" }
+            let hours = remaining / 3600
+            let minutes = (remaining % 3600) / 60
+            return hours > 0 ? "Resets in \(hours)h \(minutes)m" : "Resets in \(minutes)m"
+        case .weekday:
+            return "Resets \(Self.weekdayFormatter.string(from: date))"
+        }
     }
+
+    /// e.g. "Wed 4:00 AM".
+    private static let weekdayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "EEE h:mm a"
+        return f
+    }()
 }
 
 #Preview {
     let state = UsageState.shared
-    state.update(percentage: 62, resetsAt: Date().addingTimeInterval(8_040))
+    state.update(Usage(
+        session: UsageBucket(percentage: 62, resetsAt: Date().addingTimeInterval(5_280)),
+        weeklyAllModels: UsageBucket(percentage: 6, resetsAt: Date().addingTimeInterval(180_000)),
+        weeklySonnet: UsageBucket(percentage: 2, resetsAt: Date().addingTimeInterval(180_000))
+    ))
     return PopoverView().environmentObject(state)
 }

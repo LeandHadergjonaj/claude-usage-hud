@@ -1,10 +1,16 @@
 import Foundation
 
-/// A single usage reading: how much of the current session is used and when it
-/// resets.
-struct Usage {
+/// One rate-limit bucket: how much is used and when it resets.
+struct UsageBucket {
     let percentage: Int
     let resetsAt: Date?
+}
+
+/// A full usage reading across the buckets Claude exposes.
+struct Usage {
+    let session: UsageBucket            // current 5-hour session
+    let weeklyAllModels: UsageBucket?   // rolling 7-day, all models
+    let weeklySonnet: UsageBucket?      // rolling 7-day, Sonnet only
 }
 
 /// Errors surfaced to the UI so it can react (re-prompt for the key, show a
@@ -200,6 +206,16 @@ enum UsageParsing {
         "five_hour", "fiveHour", "5_hour", "five_hour_limit",
         "current_session", "session", "session_usage",
     ]
+    /// Keys for the rolling 7-day "all models" bucket.
+    private static let weeklyAllKeys = [
+        "seven_day", "sevenDay", "7_day", "seven_day_limit",
+        "weekly", "weekly_all_models", "seven_day_all_models", "seven_day_all",
+    ]
+    /// Keys for the rolling 7-day "Sonnet only" bucket.
+    private static let weeklySonnetKeys = [
+        "seven_day_sonnet", "sevenDaySonnet", "weekly_sonnet",
+        "seven_day_sonnet_limit", "7_day_sonnet", "sonnet",
+    ]
     private static let percentKeys = [
         "utilization", "percentage", "percent", "pct",
         "used_percent", "usage_percent", "used_percentage",
@@ -212,34 +228,41 @@ enum UsageParsing {
     static func parseUsage(_ data: Data) -> Usage? {
         guard let root = try? JSONSerialization.jsonObject(with: data) else { return nil }
 
-        // Prefer an explicit session/5-hour bucket if one exists.
-        if let bucket = findSessionBucket(root),
-           let pct = percentage(in: bucket) {
-            return Usage(percentage: pct, resetsAt: resetDate(in: bucket))
-        }
+        // The session bucket is required; weekly buckets are optional (they may
+        // not exist on every plan or in every response shape).
+        let session = findBucket(root, keys: sessionKeys).flatMap(makeBucket)
+            ?? (root as? [String: Any]).flatMap(makeBucket)
+        guard let session else { return nil }
 
-        // Otherwise fall back to a top-level percentage.
-        if let dict = root as? [String: Any], let pct = percentage(in: dict) {
-            return Usage(percentage: pct, resetsAt: resetDate(in: dict))
-        }
-
-        return nil
+        return Usage(
+            session: session,
+            weeklyAllModels: findBucket(root, keys: weeklyAllKeys).flatMap(makeBucket),
+            weeklySonnet: findBucket(root, keys: weeklySonnetKeys).flatMap(makeBucket)
+        )
     }
 
-    private static func findSessionBucket(_ node: Any) -> [String: Any]? {
+    /// Recursively finds the first dictionary stored under any of `keys`.
+    private static func findBucket(_ node: Any, keys: [String]) -> [String: Any]? {
         if let dict = node as? [String: Any] {
-            for key in sessionKeys {
+            for key in keys {
                 if let bucket = dict[key] as? [String: Any] { return bucket }
             }
             for value in dict.values {
-                if let found = findSessionBucket(value) { return found }
+                if let found = findBucket(value, keys: keys) { return found }
             }
         } else if let array = node as? [Any] {
             for value in array {
-                if let found = findSessionBucket(value) { return found }
+                if let found = findBucket(value, keys: keys) { return found }
             }
         }
         return nil
+    }
+
+    /// Turns a bucket dictionary into a `UsageBucket`, or `nil` if it has no
+    /// recognizable percentage.
+    private static func makeBucket(_ dict: [String: Any]) -> UsageBucket? {
+        guard let pct = percentage(in: dict) else { return nil }
+        return UsageBucket(percentage: pct, resetsAt: resetDate(in: dict))
     }
 
     /// Extracts an integer 0–100 from a bucket. Handles three shapes:

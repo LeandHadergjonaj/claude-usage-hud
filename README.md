@@ -9,21 +9,27 @@ times — the same figure Claude shows in its own UI.
  └─────────────────────────────────────────────┘
                       │ click
                       ▼
-            ┌──────────────────────┐
-            │    Claude Usage      │
-            │       ╭───╮          │
-            │       │62%│          │   ← popover: progress arc
-            │       ╰───╯          │
-            │  62% of session used │
-            │  Resets in 2h 14m    │
-            │  Updated 3s ago      │
-            └──────────────────────┘
+        ┌──────────────────────────────┐
+        │        Claude Usage          │
+        │  Current Session             │
+        │  ████████████░░  62%         │   ← all usage buckets
+        │  Resets in 1h 28m            │
+        │  Weekly — All Models         │
+        │  ██░░░░░░░░░░░░   6%          │
+        │  Resets Wed 4:00 AM          │
+        │  Weekly — Sonnet Only        │
+        │  █░░░░░░░░░░░░░   2%          │
+        │  Resets Wed 4:00 AM          │
+        │  ───────────────────         │
+        │  ☑ Launch at login           │
+        │  Update key          Quit    │
+        └──────────────────────────────┘
 ```
 
 It's a single SwiftUI + AppKit menu bar app. You paste your claude.ai session
 key once during setup; from then on the app polls Claude's usage API directly
-every 30 seconds and colour-codes the percentage in your menu bar. **No browser
-extension, no local server — it just works in the background.**
+every minute and colour-codes the current-session percentage in your menu bar.
+**No browser extension, no local server — it just works in the background.**
 
 ```
 claude-usage-hud/
@@ -34,9 +40,10 @@ claude-usage-hud/
 │       ├── AppDelegate.swift            Status item + popover + polling loop
 │       ├── ClaudeAPIClient.swift        Calls Claude's usage API with the cookie
 │       ├── KeychainStore.swift          Stores the session key in the Keychain
+│       ├── LoginItem.swift              Launch-at-login via SMAppService
 │       ├── UsageState.swift             Shared observable state
 │       ├── SetupView.swift              One-time "paste your session key" screen
-│       ├── PopoverView.swift            SwiftUI popover (progress arc)
+│       ├── PopoverView.swift            SwiftUI popover (all usage buckets)
 │       ├── Info.plist                   LSUIElement = true (no Dock icon)
 │       └── Assets.xcassets
 └── README.md
@@ -51,14 +58,26 @@ claude-usage-hud/
 2. The key is saved in the **macOS Keychain** (encrypted at rest — never in a
    plist or in plain text).
 3. The app calls `GET https://claude.ai/api/account` once to discover your
-   organization id, then every **30 seconds** calls
+   organization id, then every **60 seconds** calls
    `GET https://claude.ai/api/organizations/{orgId}/usage` with the header
    `Cookie: sessionKey=<your key>`.
-4. It parses the current-session percentage (and reset time) from the response.
-5. The menu bar shows e.g. `62%` in **green** (`<50`), **orange** (`50–79`), or
-   **red** (`≥80`).
-6. Clicking the menu bar item opens a popover with a progress arc,
-   "62% of session used", and "Resets in 2h 14m".
+4. It parses each usage bucket from the response — the current 5-hour session,
+   the weekly all-models limit, and the weekly Sonnet-only limit (each with its
+   reset time).
+5. The menu bar shows the current-session figure, e.g. `62%`, in **green**
+   (`<50`), **orange** (`50–79`), or **red** (`≥80`).
+6. Clicking the menu bar item opens a popover showing **all** of those buckets
+   as colour-coded bars with their percentages and reset times — for example
+   "Current Session 62% · Resets in 1h 28m", "Weekly — All Models 6% · Resets
+   Wed 4:00 AM", "Weekly — Sonnet Only 2%".
+
+### Launch at login
+
+After your first successful setup the app **registers itself to launch at login**
+automatically (via `SMAppService`, macOS 13+ — no LaunchAgent plist). You can
+toggle this any time with the **Launch at login** checkbox in the popover footer;
+the preference is remembered. Once it's a login item, the HUD is just always
+there after you log in.
 
 Nothing is sent anywhere except your own requests to `claude.ai`, exactly as
 your browser would make them.
@@ -92,15 +111,22 @@ In the setup window, follow the steps:
 5. Paste it into the app and click **Save & Connect**.
 
 The app validates the key by making one live request. On success the window
-closes and the menu bar starts showing your usage. That's it — done forever (or
-until the cookie expires; see below).
+closes, the menu bar starts showing your usage, and the app registers itself to
+**launch at login**. That's it — done forever (or until the cookie expires; see
+below).
 
 #### Run it without keeping Xcode open
 
 After building once, the app is in Xcode's Products. Right-click
 **`ClaudeUsageHUD.app`** in the Project navigator → **Show in Finder**, then copy
-it to `/Applications`. To launch it automatically at login, add it under
-**System Settings → General → Login Items**.
+it to **`/Applications`** and launch it from there. Launch-at-login is enabled
+automatically after setup (toggle it in the popover footer), so it'll come back
+on its own after every reboot.
+
+> Launch-at-login uses `SMAppService`, which registers the app at its current
+> path — run the app from a stable location like `/Applications` rather than from
+> Xcode's build folder so the login item keeps pointing at the right binary. You
+> can review or remove it under **System Settings → General → Login Items**.
 
 ---
 
@@ -118,12 +144,15 @@ retrying every 30 seconds; click the item to see the error detail.
 **Menu bar shows `—`.**
 The app is running but no key is stored yet. Click the item → **Set up…**.
 
-**The percentage looks wrong / shows nothing after a valid key.**
+**A percentage looks wrong, or a weekly section is missing.**
 Claude's internal API isn't a public contract, so its JSON shape can change. The
-parser in `ClaudeAPIClient.swift` searches the response for the session bucket
-defensively, but if the format shifts you can inspect the raw response by setting
-`DEBUG_DUMP = true` in `UsageParsing` (`ClaudeAPIClient.swift`) and watching
-Console.app for `[ClaudeUsageHUD]` log lines, then adjust the key lists.
+parser in `ClaudeAPIClient.swift` searches the response defensively for each
+bucket (`sessionKeys`, `weeklyAllKeys`, `weeklySonnetKeys`). The current session
+is required; the weekly sections only appear when a matching bucket is found, so
+if a weekly row is missing the field name probably differs from the candidates.
+Inspect the raw response by setting `DEBUG_DUMP = true` in `UsageParsing`
+(`ClaudeAPIClient.swift`), watch Console.app for `[ClaudeUsageHUD]` log lines,
+then add the real key names to the matching list.
 
 **Requests fail with HTTP 403.**
 claude.ai sits behind bot protection. The app sends a browser-like User-Agent,

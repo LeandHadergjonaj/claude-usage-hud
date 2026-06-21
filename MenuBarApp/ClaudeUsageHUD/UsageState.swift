@@ -6,6 +6,12 @@ import Foundation
 final class UsageState: ObservableObject {
     static let shared = UsageState()
 
+    /// One usage bucket as displayed in the UI.
+    struct Bucket: Equatable {
+        let percentage: Int
+        let resetsAt: Date?
+    }
+
     /// What the app is currently able to show.
     enum Status: Equatable {
         case needsSetup          // no session key stored yet
@@ -15,33 +21,35 @@ final class UsageState: ObservableObject {
         case error(String)       // transient failure (network, etc.)
     }
 
-    @Published private(set) var percentage: Int?
-    @Published private(set) var resetsAt: Date?
+    @Published private(set) var session: Bucket?
+    @Published private(set) var weeklyAllModels: Bucket?
+    @Published private(set) var weeklySonnet: Bucket?
     @Published private(set) var lastUpdated: Date?
     @Published private(set) var status: Status = .needsSetup
 
     private init() {}
 
-    /// A successful reading.
-    func update(percentage: Int, resetsAt: Date?) {
-        let clamped = max(0, min(100, percentage))
+    /// A successful reading across all buckets.
+    func update(_ usage: Usage) {
         onMain {
-            self.percentage = clamped
-            self.resetsAt = resetsAt
+            self.session = Bucket(usage.session)
+            self.weeklyAllModels = usage.weeklyAllModels.map(Bucket.init)
+            self.weeklySonnet = usage.weeklySonnet.map(Bucket.init)
             self.lastUpdated = Date()
             self.status = .ok
         }
     }
 
-    /// A status change. `unauthorized`/`needsSetup` clear the stale percentage so
-    /// the menu bar shows the attention glyph; transient errors keep the last
-    /// value visible (with "Updated …" revealing its age).
+    /// A status change. `unauthorized`/`needsSetup` clear the stale values so the
+    /// menu bar shows the attention glyph; transient errors keep the last reading
+    /// visible (with "Updated …" revealing its age).
     func setStatus(_ status: Status) {
         onMain {
             switch status {
             case .needsSetup, .unauthorized:
-                self.percentage = nil
-                self.resetsAt = nil
+                self.session = nil
+                self.weeklyAllModels = nil
+                self.weeklySonnet = nil
             case .loading, .ok, .error:
                 break
             }
@@ -51,5 +59,11 @@ final class UsageState: ObservableObject {
 
     private func onMain(_ work: @escaping () -> Void) {
         if Thread.isMainThread { work() } else { DispatchQueue.main.async(execute: work) }
+    }
+}
+
+private extension UsageState.Bucket {
+    init(_ bucket: UsageBucket) {
+        self.init(percentage: max(0, min(100, bucket.percentage)), resetsAt: bucket.resetsAt)
     }
 }

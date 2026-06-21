@@ -15,6 +15,7 @@
 		1B0000000000000000000009 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000009 /* KeychainStore.swift */; };
 		1B000000000000000000000A /* ClaudeAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000000000000000000000A /* ClaudeAPIClient.swift */; };
 		1B000000000000000000000B /* SetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000000000000000000000B /* SetupView.swift */; };
+		1B000000000000000000000C /* LoginItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000000000000000000000C /* LoginItem.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -28,6 +29,7 @@
 		1A0000000000000000000009 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 		1A000000000000000000000A /* ClaudeAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeAPIClient.swift; sourceTree = "<group>"; };
 		1A000000000000000000000B /* SetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupView.swift; sourceTree = "<group>"; };
+		1A000000000000000000000C /* LoginItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginItem.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -66,6 +68,7 @@
 				1A0000000000000000000009 /* KeychainStore.swift */,
 				1A000000000000000000000A /* ClaudeAPIClient.swift */,
 				1A000000000000000000000B /* SetupView.swift */,
+				1A000000000000000000000C /* LoginItem.swift */,
 				1A0000000000000000000006 /* PopoverView.swift */,
 				1A0000000000000000000007 /* Assets.xcassets */,
 				1A0000000000000000000008 /* Info.plist */,
@@ -148,6 +151,7 @@
 				1B0000000000000000000009 /* KeychainStore.swift in Sources */,
 				1B000000000000000000000A /* ClaudeAPIClient.swift in Sources */,
 				1B000000000000000000000B /* SetupView.swift in Sources */,
+				1B000000000000000000000C /* LoginItem.swift in Sources */,
 				1B0000000000000000000006 /* PopoverView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

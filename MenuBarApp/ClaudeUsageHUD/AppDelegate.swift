@@ -15,7 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let state = UsageState.shared
     private let client = ClaudeAPIClient.shared
 
-    private static let pollInterval: TimeInterval = 30
+    private static let pollInterval: TimeInterval = 60
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupStatusItem()
@@ -58,9 +58,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func observeState() {
-        // Redraw the menu bar title whenever the value or status changes.
+        // Redraw the menu bar title whenever the session value or status changes.
         Publishers.Merge(
-            state.$percentage.map { _ in () },
+            state.$session.map { _ in () },
             state.$status.map { _ in () }
         )
         .receive(on: RunLoop.main)
@@ -85,13 +85,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             state.setStatus(.needsSetup)
             return
         }
-        if state.percentage == nil { state.setStatus(.loading) }
+        if state.session == nil { state.setStatus(.loading) }
 
         Task { [weak self] in
             guard let self else { return }
             do {
                 let usage = try await self.client.fetchUsage(sessionKey: key)
-                self.state.update(percentage: usage.percentage, resetsAt: usage.resetsAt)
+                self.state.update(usage)
             } catch ClaudeAPIError.unauthorized {
                 self.state.setStatus(.unauthorized)
             } catch {
@@ -110,7 +110,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let title: String
         let color: NSColor
 
-        if let pct = state.percentage {
+        if let pct = state.session?.percentage {
             title = "\(pct)%"
             color = AppDelegate.menuBarColor(for: pct)
         } else {
@@ -199,11 +199,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             do {
                 let usage = try await self.client.fetchUsage(sessionKey: key)
                 KeychainStore.save(key)
-                self.state.update(percentage: usage.percentage, resetsAt: usage.resetsAt)
+                self.state.update(usage)
                 await MainActor.run {
                     self.setupCoordinator?.status = .idle
                     self.closeSetup()
                     self.startPolling()
+                    // Opt in to launch-at-login the first time setup succeeds.
+                    LoginItem.shared.enableByDefaultIfFirstRun()
                 }
             } catch ClaudeAPIError.unauthorized {
                 await MainActor.run {
