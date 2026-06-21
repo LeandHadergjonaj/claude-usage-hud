@@ -10,9 +10,11 @@
 		1B0000000000000000000002 /* ClaudeUsageHUDApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000002 /* ClaudeUsageHUDApp.swift */; };
 		1B0000000000000000000003 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000003 /* AppDelegate.swift */; };
 		1B0000000000000000000004 /* UsageState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000004 /* UsageState.swift */; };
-		1B0000000000000000000005 /* UsageServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000005 /* UsageServer.swift */; };
 		1B0000000000000000000006 /* PopoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000006 /* PopoverView.swift */; };
 		1B0000000000000000000007 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000007 /* Assets.xcassets */; };
+		1B0000000000000000000009 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000009 /* KeychainStore.swift */; };
+		1B000000000000000000000A /* ClaudeAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000000000000000000000A /* ClaudeAPIClient.swift */; };
+		1B000000000000000000000B /* SetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000000000000000000000B /* SetupView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -20,10 +22,12 @@
 		1A0000000000000000000002 /* ClaudeUsageHUDApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeUsageHUDApp.swift; sourceTree = "<group>"; };
 		1A0000000000000000000003 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		1A0000000000000000000004 /* UsageState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageState.swift; sourceTree = "<group>"; };
-		1A0000000000000000000005 /* UsageServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageServer.swift; sourceTree = "<group>"; };
 		1A0000000000000000000006 /* PopoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PopoverView.swift; sourceTree = "<group>"; };
 		1A0000000000000000000007 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		1A0000000000000000000008 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		1A0000000000000000000009 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
+		1A000000000000000000000A /* ClaudeAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeAPIClient.swift; sourceTree = "<group>"; };
+		1A000000000000000000000B /* SetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -59,7 +63,9 @@
 				1A0000000000000000000002 /* ClaudeUsageHUDApp.swift */,
 				1A0000000000000000000003 /* AppDelegate.swift */,
 				1A0000000000000000000004 /* UsageState.swift */,
-				1A0000000000000000000005 /* UsageServer.swift */,
+				1A0000000000000000000009 /* KeychainStore.swift */,
+				1A000000000000000000000A /* ClaudeAPIClient.swift */,
+				1A000000000000000000000B /* SetupView.swift */,
 				1A0000000000000000000006 /* PopoverView.swift */,
 				1A0000000000000000000007 /* Assets.xcassets */,
 				1A0000000000000000000008 /* Info.plist */,
@@ -139,7 +145,9 @@
 				1B0000000000000000000002 /* ClaudeUsageHUDApp.swift in Sources */,
 				1B0000000000000000000003 /* AppDelegate.swift in Sources */,
 				1B0000000000000000000004 /* UsageState.swift in Sources */,
-				1B0000000000000000000005 /* UsageServer.swift in Sources */,
+				1B0000000000000000000009 /* KeychainStore.swift in Sources */,
+				1B000000000000000000000A /* ClaudeAPIClient.swift in Sources */,
+				1B000000000000000000000B /* SetupView.swift in Sources */,
 				1B0000000000000000000006 /* PopoverView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

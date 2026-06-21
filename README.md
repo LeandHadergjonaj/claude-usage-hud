@@ -1,48 +1,44 @@
 # Claude Usage HUD
 
 Show your **Claude.ai session usage percentage** in the macOS menu bar at all
-times — the same `23%` figure Claude shows in its own UI.
+times — the same figure Claude shows in its own UI.
 
 ```
  ┌─────────────────────────────────────────────┐
- │  …  🔋  📶  🔊   23%   Tue 9:41              │   ← menu bar (green/orange/red)
+ │  …  🔋  📶  🔊   62%   Tue 9:41              │   ← menu bar (green/orange/red)
  └─────────────────────────────────────────────┘
                       │ click
                       ▼
             ┌──────────────────────┐
             │    Claude Usage      │
             │       ╭───╮          │
-            │       │23%│          │   ← popover: progress arc
+            │       │62%│          │   ← popover: progress arc
             │       ╰───╯          │
-            │  23% of session used │
+            │  62% of session used │
+            │  Resets in 2h 14m    │
             │  Updated 3s ago      │
             └──────────────────────┘
 ```
 
-It has two pieces:
-
-| Piece | What it does |
-|-------|--------------|
-| **`BrowserExtension/`** | A Chrome MV3 extension that runs on `claude.ai`, reads the usage percentage from the page, and POSTs it to `localhost:27420`. |
-| **`MenuBarApp/`** | A SwiftUI + AppKit menu bar app that runs a tiny local HTTP server, displays the percentage (colour-coded), and shows a popover with a progress arc on click. |
+It's a single SwiftUI + AppKit menu bar app. You paste your claude.ai session
+key once during setup; from then on the app polls Claude's usage API directly
+every 30 seconds and colour-codes the percentage in your menu bar. **No browser
+extension, no local server — it just works in the background.**
 
 ```
 claude-usage-hud/
-├── MenuBarApp/                 ← Swift / SwiftUI Xcode project
+├── MenuBarApp/                      ← Swift / SwiftUI Xcode project
 │   ├── ClaudeUsageHUD.xcodeproj
 │   └── ClaudeUsageHUD/
-│       ├── ClaudeUsageHUDApp.swift   App entry point
-│       ├── AppDelegate.swift         Status item + popover + server wiring
-│       ├── UsageState.swift          Shared observable state
-│       ├── UsageServer.swift         Loopback HTTP server (Network.framework)
-│       ├── PopoverView.swift         SwiftUI popover (progress arc)
-│       ├── Info.plist                LSUIElement = true (no Dock icon)
+│       ├── ClaudeUsageHUDApp.swift      App entry point
+│       ├── AppDelegate.swift            Status item + popover + polling loop
+│       ├── ClaudeAPIClient.swift        Calls Claude's usage API with the cookie
+│       ├── KeychainStore.swift          Stores the session key in the Keychain
+│       ├── UsageState.swift             Shared observable state
+│       ├── SetupView.swift              One-time "paste your session key" screen
+│       ├── PopoverView.swift            SwiftUI popover (progress arc)
+│       ├── Info.plist                   LSUIElement = true (no Dock icon)
 │       └── Assets.xcassets
-├── BrowserExtension/           ← Chrome MV3 extension
-│   ├── manifest.json
-│   ├── content.js              Detects the % on claude.ai
-│   ├── background.js           Forwards the % to the menu bar app
-│   ├── popup.html / popup.js   Toolbar popup (status + last value)
 └── README.md
 ```
 
@@ -50,27 +46,30 @@ claude-usage-hud/
 
 ## How it works
 
-1. `content.js` runs on every `claude.ai` page and watches the DOM for the
-   session usage percentage Claude shows natively.
-2. Every few seconds (and on DOM changes) it sends the value to `background.js`.
-3. `background.js` POSTs `{ "percentage": 23, "timestamp": "…" }` to
-   `http://localhost:27420/usage`.
-4. The Swift app runs an HTTP server on port **27420** (loopback only) and
-   updates its state.
-5. The menu bar shows `23%` in **green** (`<50`), **orange** (`50–79`), or
+1. On first launch the app shows a **setup window** asking for your claude.ai
+   `sessionKey` cookie. You paste it once.
+2. The key is saved in the **macOS Keychain** (encrypted at rest — never in a
+   plist or in plain text).
+3. The app calls `GET https://claude.ai/api/account` once to discover your
+   organization id, then every **30 seconds** calls
+   `GET https://claude.ai/api/organizations/{orgId}/usage` with the header
+   `Cookie: sessionKey=<your key>`.
+4. It parses the current-session percentage (and reset time) from the response.
+5. The menu bar shows e.g. `62%` in **green** (`<50`), **orange** (`50–79`), or
    **red** (`≥80`).
-6. Clicking the menu bar item opens a popover with a progress arc and
-   "23% of session used".
+6. Clicking the menu bar item opens a popover with a progress arc,
+   "62% of session used", and "Resets in 2h 14m".
 
-If the app isn't running, the extension just fails silently and keeps retrying.
+Nothing is sent anywhere except your own requests to `claude.ai`, exactly as
+your browser would make them.
 
 ---
 
 ## Setup
 
-### 1. Build and run the menu bar app
-
 **Requirements:** macOS 13+ and Xcode 15+ (no external dependencies).
+
+### 1. Build and run the app
 
 1. Open `MenuBarApp/ClaudeUsageHUD.xcodeproj` in Xcode.
 2. Select the **ClaudeUsageHUD** scheme and **My Mac** as the run destination.
@@ -79,14 +78,22 @@ If the app isn't running, the extension just fails silently and keeps retrying.
    on automatic — macOS will sign it to run locally.
 4. Press **⌘R**.
 
-The app has **no Dock icon** (`LSUIElement = true`). Look for `—` in the menu
-bar — that means it's running and waiting for data. Once the extension sends a
-value it becomes e.g. `23%`.
+The app has **no Dock icon** (`LSUIElement = true`). On first run the setup
+window appears automatically.
 
-> **Note on the App Sandbox:** this project ships with the sandbox **disabled**
-> so the local HTTP server can bind to port 27420 without extra entitlements.
-> If you enable the App Sandbox later, add the **Incoming Connections (Server)**
-> capability (`com.apple.security.network.server`).
+### 2. Paste your session key
+
+In the setup window, follow the steps:
+
+1. Open **claude.ai** in your browser.
+2. Open DevTools (**⌥⌘I**).
+3. Go to **Application → Cookies → claude.ai**.
+4. Find the cookie named **`sessionKey`** and copy its value.
+5. Paste it into the app and click **Save & Connect**.
+
+The app validates the key by making one live request. On success the window
+closes and the menu bar starts showing your usage. That's it — done forever (or
+until the cookie expires; see below).
 
 #### Run it without keeping Xcode open
 
@@ -95,67 +102,33 @@ After building once, the app is in Xcode's Products. Right-click
 it to `/Applications`. To launch it automatically at login, add it under
 **System Settings → General → Login Items**.
 
-### 2. Install the Chrome extension
-
-1. Open `chrome://extensions`.
-2. Toggle **Developer mode** (top-right) on.
-3. Click **Load unpacked** and select the **`BrowserExtension/`** folder.
-4. Open or reload a tab on **https://claude.ai** and use it normally.
-
-Click the extension's toolbar icon to see the last detected value and whether
-it can reach the menu bar app.
-
-That's it — the menu bar percentage should start tracking your Claude session.
-
----
-
-## Verifying it works
-
-- **Test the server directly** (with the app running):
-
-  ```sh
-  curl -i -X POST http://localhost:27420/usage \
-    -H 'Content-Type: application/json' \
-    -d '{"percentage": 42, "timestamp": "2026-06-21T12:00:00Z"}'
-  ```
-
-  You should get `HTTP/1.1 200 OK` and the menu bar should jump to `42%`
-  (orange).
-
-- **Watch the extension:** on `chrome://extensions`, click **service worker**
-  under the extension to open its console, or open DevTools on a `claude.ai` tab
-  and set `DEBUG = true` at the top of `content.js` to log what it detects.
-
 ---
 
 ## Troubleshooting
 
-**Menu bar shows `—` forever.**
-The app is running but hasn't received a value. Make sure the extension is
-loaded, you're on a `claude.ai` page with a percentage visible, and the server
-is up (`curl` test above).
+**Menu bar shows `!` (red).**
+Your session key was rejected — it has probably expired (claude.ai cookies
+don't last forever). Click the menu bar item → **Update key…** and paste a fresh
+`sessionKey` value.
 
-**`curl` works but the extension doesn't update.**
-Open the extension's service-worker console (`chrome://extensions` → *service
-worker*) and look for fetch errors. Reload the extension after any change.
+**Menu bar shows `!` (orange).**
+A transient network problem — the app couldn't reach claude.ai. It keeps
+retrying every 30 seconds; click the item to see the error detail.
 
-**Nothing detected on `claude.ai`.**
-Claude's markup changes frequently, so the selectors may need a tweak. Set
-`DEBUG = true` in `content.js` and reload. The detector tries, in order:
-1. elements with `data-testid` / `aria-label` / `title` / class names
-   containing *usage*, *limit*, *context*, or *session*;
-2. a lone `NN%` text node, preferring the one lowest on screen (Claude shows
-   the figure in the chat input footer).
+**Menu bar shows `—`.**
+The app is running but no key is stored yet. Click the item → **Set up…**.
 
-To target a specific element you found in DevTools, add its selector to the
-`selectors` array in `findByAttributes()` inside `content.js`.
+**The percentage looks wrong / shows nothing after a valid key.**
+Claude's internal API isn't a public contract, so its JSON shape can change. The
+parser in `ClaudeAPIClient.swift` searches the response for the session bucket
+defensively, but if the format shifts you can inspect the raw response by setting
+`DEBUG_DUMP = true` in `UsageParsing` (`ClaudeAPIClient.swift`) and watching
+Console.app for `[ClaudeUsageHUD]` log lines, then adjust the key lists.
 
-**Port 27420 already in use.**
-Change the port in **two** places and reload both pieces:
-- `MenuBarApp/ClaudeUsageHUD/AppDelegate.swift` → `UsageServer(port: 27420)`
-- `BrowserExtension/background.js` → `ENDPOINT`
-- and the matching `host_permissions` entries in
-  `BrowserExtension/manifest.json`.
+**Requests fail with HTTP 403.**
+claude.ai sits behind bot protection. The app sends a browser-like User-Agent,
+but if you hit a challenge, refresh claude.ai in your browser and copy a current
+`sessionKey` value again.
 
 **Build fails on signing.**
 For local use you don't need a paid Apple Developer account — set the target's
@@ -166,8 +139,10 @@ run on your Mac.
 
 ## Privacy & security
 
-- The server binds to **loopback only** and rejects any non-localhost
-  connection — nothing is exposed to your network.
-- Only a single integer (the percentage) and a timestamp ever leave the page.
-  No message content, account info, or page data is read or transmitted.
-- Nothing is sent anywhere except your own Mac on `localhost`.
+- Your session key is stored in the **macOS Keychain**, encrypted at rest.
+- The app talks **only** to `claude.ai`, using your own cookie — the same
+  requests your browser already makes. Nothing is sent to any third party.
+- No data is stored or transmitted anywhere else. The only thing read from the
+  API is your usage percentage and reset time.
+- Treat your `sessionKey` like a password: anyone with it can act as you on
+  claude.ai. The app never displays it back or copies it elsewhere.

@@ -2,7 +2,8 @@ import SwiftUI
 
 @main
 struct ClaudeUsageHUDApp: App {
-    // The AppDelegate owns the status bar item, popover, and local HTTP server.
+    // The AppDelegate owns the status bar item, popover, setup window, and the
+    // polling loop that reads usage from Claude's API.
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     var body: some Scene {

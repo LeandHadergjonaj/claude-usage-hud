@@ -2,20 +2,37 @@ import AppKit
 import Combine
 import SwiftUI
 
-/// Owns the menu bar status item, the click-through popover, and the local
-/// HTTP server that the browser extension POSTs usage updates to.
+/// Owns the menu bar status item, the click-through popover, the one-time setup
+/// window, and the 30-second polling loop that reads usage from Claude's API.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var popover: NSPopover!
-    private var server: UsageServer!
+    private var setupWindow: NSWindow?
+    private var setupCoordinator: SetupCoordinator?
+    private var pollTimer: Timer?
     private var cancellables = Set<AnyCancellable>()
+
     private let state = UsageState.shared
+    private let client = ClaudeAPIClient.shared
+
+    private static let pollInterval: TimeInterval = 30
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupStatusItem()
         setupPopover()
         observeState()
-        startServer()
+
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(showSetup),
+            name: .showSetup, object: nil
+        )
+
+        if KeychainStore.hasSessionKey {
+            startPolling()
+        } else {
+            state.setStatus(.needsSetup)
+            showSetup()
+        }
         updateStatusItem()
     }
 
@@ -32,7 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func setupPopover() {
         popover = NSPopover()
-        popover.contentSize = NSSize(width: 240, height: 200)
+        popover.contentSize = NSSize(width: 250, height: 220)
         popover.behavior = .transient
         popover.animates = true
         popover.contentViewController = NSHostingController(
@@ -41,18 +58,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func observeState() {
-        // Redraw the menu bar title whenever the percentage changes.
-        state.$percentage
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.updateStatusItem() }
-            .store(in: &cancellables)
+        // Redraw the menu bar title whenever the value or status changes.
+        Publishers.Merge(
+            state.$percentage.map { _ in () },
+            state.$status.map { _ in () }
+        )
+        .receive(on: RunLoop.main)
+        .sink { [weak self] in self?.updateStatusItem() }
+        .store(in: &cancellables)
     }
 
-    private func startServer() {
-        server = UsageServer(port: 27420) { [weak self] percentage in
-            self?.state.update(percentage: percentage)
+    // MARK: - Polling
+
+    private func startPolling() {
+        pollTimer?.invalidate()
+        let timer = Timer.scheduledTimer(withTimeInterval: Self.pollInterval, repeats: true) {
+            [weak self] _ in self?.refresh()
         }
-        server.start()
+        pollTimer = timer
+        refresh()
+    }
+
+    /// One poll cycle. No-ops (into `needsSetup`) when there's no key.
+    private func refresh() {
+        guard let key = KeychainStore.load(), !key.isEmpty else {
+            state.setStatus(.needsSetup)
+            return
+        }
+        if state.percentage == nil { state.setStatus(.loading) }
+
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let usage = try await self.client.fetchUsage(sessionKey: key)
+                self.state.update(percentage: usage.percentage, resetsAt: usage.resetsAt)
+            } catch ClaudeAPIError.unauthorized {
+                self.state.setStatus(.unauthorized)
+            } catch {
+                let message = (error as? LocalizedError)?.errorDescription
+                    ?? error.localizedDescription
+                self.state.setStatus(.error(message))
+            }
+        }
     }
 
     // MARK: - Menu bar rendering
@@ -62,12 +109,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let title: String
         let color: NSColor
+
         if let pct = state.percentage {
             title = "\(pct)%"
             color = AppDelegate.menuBarColor(for: pct)
         } else {
-            title = "—"
-            color = .secondaryLabelColor
+            switch state.status {
+            case .unauthorized:
+                title = "!"
+                color = .systemRed
+            case .error:
+                title = "!"
+                color = .systemOrange
+            case .loading:
+                title = "…"
+                color = .secondaryLabelColor
+            case .needsSetup, .ok:
+                title = "—"
+                color = .secondaryLabelColor
+            }
         }
 
         button.attributedTitle = NSAttributedString(
@@ -98,5 +158,69 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             popover.contentViewController?.view.window?.makeKey()
         }
+    }
+
+    // MARK: - Setup window
+
+    @objc private func showSetup() {
+        popover.performClose(nil)
+
+        let coordinator = setupCoordinator ?? makeSetupCoordinator()
+        coordinator.status = .idle
+
+        if setupWindow == nil {
+            let hosting = NSHostingController(rootView: SetupView(coordinator: coordinator))
+            let window = NSWindow(contentViewController: hosting)
+            window.title = "Claude Usage HUD"
+            window.styleMask = [.titled, .closable]
+            window.isReleasedWhenClosed = false
+            window.center()
+            setupWindow = window
+        }
+
+        NSApp.activate(ignoringOtherApps: true)
+        setupWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    private func makeSetupCoordinator() -> SetupCoordinator {
+        let coordinator = SetupCoordinator()
+        coordinator.onSubmit = { [weak self] key in self?.validateAndSave(key) }
+        setupCoordinator = coordinator
+        return coordinator
+    }
+
+    /// Validates a pasted key by fetching once before persisting it.
+    private func validateAndSave(_ key: String) {
+        // A new key may belong to a different account; drop the cached org id.
+        client.clearOrganizationCache()
+
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let usage = try await self.client.fetchUsage(sessionKey: key)
+                KeychainStore.save(key)
+                self.state.update(percentage: usage.percentage, resetsAt: usage.resetsAt)
+                await MainActor.run {
+                    self.setupCoordinator?.status = .idle
+                    self.closeSetup()
+                    self.startPolling()
+                }
+            } catch ClaudeAPIError.unauthorized {
+                await MainActor.run {
+                    self.setupCoordinator?.status =
+                        .failed("That key was rejected. Copy the full value of the sessionKey cookie and try again.")
+                }
+            } catch {
+                let message = (error as? LocalizedError)?.errorDescription
+                    ?? error.localizedDescription
+                await MainActor.run {
+                    self.setupCoordinator?.status = .failed("Couldn't connect: \(message)")
+                }
+            }
+        }
+    }
+
+    private func closeSetup() {
+        setupWindow?.close()
     }
 }
