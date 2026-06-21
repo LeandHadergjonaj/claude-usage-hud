@@ -1,0 +1,14 @@
+# macOS
+.DS_Store
+
+# Xcode
+MenuBarApp/build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+*.xcscmblueprint
+*.xccheckout
+*.moved-aside
+
+# Node / extension tooling (none required, but just in case)
+node_modules/
